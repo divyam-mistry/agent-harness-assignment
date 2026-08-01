@@ -1,0 +1,26 @@
+Coverage report (pytest --cov=harness)
+
+coverage: platform darwin, python 3.11.16-final-0 _______________
+
+Name                            Stmts   Miss  Cover
+---------------------------------------------------
+harness/__init__.py                 0      0   100%
+harness/api.py                     57      0   100%
+harness/config.py                  23      0   100%
+harness/context.py                 37      0   100%
+harness/loop.py                   105      3    97%
+harness/memory/__init__.py          0      0   100%
+harness/memory/consolidate.py       8      0   100%
+harness/memory/episodic.py          9      0   100%
+harness/memory/extract.py          11      0   100%
+harness/memory/longterm.py         38      3    92%
+harness/memory/working.py          13      0   100%
+harness/model.py                   50      5    90%
+harness/telemetry.py              103     24    77%
+harness/tools/__init__.py           0      0   100%
+harness/tools/builtin.py           87     32    63%
+harness/tools/registry.py          44      2    95%
+harness/tools/subagent.py          34      4    88%
+---------------------------------------------------
+TOTAL                             619     73    88%
+27 passed in 0.15s
