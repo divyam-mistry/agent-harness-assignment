@@ -1,73 +1,78 @@
-"""Extracts durable facts about the user from an exchange."""
+"""Extracts durable facts about the user from an exchange (structured output)."""
 
 from __future__ import annotations
 
 import re
 
 EXTRACTION_INSTRUCTIONS = """\
-You help an assistant remember durable things about its user. Read the exchange and
-list the facts the USER stated about themselves: where they live or work, people and
-pets, preferences, constraints and standing instructions ("never ship to my office"),
-and corrections to something they said earlier.
+You help an assistant remember durable things about its user. Read the exchange and call
+record_facts with the facts the USER stated about themselves: where they live or work,
+people and pets, preferences, constraints and standing instructions ("never ship to my
+office"), and corrections to something they said earlier.
 
-Do not list: one-off requests or questions, order numbers or other identifiers the user
-is merely asking about, small talk, things only the assistant said, or anything the
-user did not state. Asking about a place, or comparing places as options for a trip (weather,
-hotels, "Berlin or Porto"), does not mean the user lives there: use `home_city` only when the USER
-explicitly says where they live or that they moved.
-Output only the fact lines, no commentary. If the user corrects or changes an earlier fact,
-list only the new fact.
+Do not record: one-off requests or questions, order numbers or other identifiers the user is
+merely asking about, small talk, things only the assistant said, or places the user is only
+asking about or comparing as trip options (use topic home_city only when the user says where
+they live or that they moved). If the user corrects an earlier fact, record only the new fact.
+Each fact needs `quote`: the exact words from the USER's message that state it.
+Call record_facts with an empty list if there is nothing to record."""
 
-Write one fact per line as `topic | sentence`. The sentence is short, in the user's own
-voice (first person). The topic is a short snake_case label for what the fact is about;
-two facts about the same thing must use the same topic (for example a new home city
-replaces the old one under `home_city`). Examples:
-home_city | I live in Porto.
-seat_preference | I prefer aisle seats on trains.
-office_shipping | I never want orders shipped to my office.
-If there are no facts, output NONE.
-"""
+EXTRACT_TOOL = {
+    "name": "record_facts",
+    "description": "Record durable facts the user stated about themselves.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "facts": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {"type": "string", "description": "short snake_case label; same thing, same label (home_city, diet, seat_preference)"},
+                        "statement": {"type": "string", "description": "short first-person sentence, e.g. 'I live in Porto.'"},
+                        "quote": {"type": "string", "description": "exact words from the user's message that state this"},
+                    },
+                    "required": ["topic", "statement", "quote"],
+                },
+            }
+        },
+        "required": ["facts"],
+    },
+}
 
 
 def build_request(user_text: str, assistant_text: str) -> list[dict]:
     return [{"role": "user", "content": f"USER: {user_text[:4000]}\nASSISTANT: {assistant_text[:600]}"}]
 
 
-_KEYED = re.compile(r"^([a-z][a-z0-9_]{1,40})\s*\|\s*(.+)$")
-# Facts are first-person statements; anything else is the model talking about the task, not a fact.
-_FIRST_PERSON = re.compile(r"^(i|i'm|i’m|i've|i’ve|i'd|my|we|we're|our|never|please)\b", re.IGNORECASE)
-# Second person, or talk about the task itself: the model is commenting, not recording a fact.
-_NOT_A_FACT = re.compile(r"\byou(r|rs)?\b|\b(facts?|exchange|user|stated|statements?)\b|\bI(?:'ll| will| don't see| realize)\b|\.\.\.", re.IGNORECASE)
+def _norm(text: str) -> str:
+    return " ".join(re.findall(r"\w+", text.lower()))
 
 
-def parse_keyed(text: str) -> list[tuple[str | None, str]]:
-    """Parse ``topic | sentence`` lines; plain first-person sentences are accepted with no topic."""
-    facts: list[tuple[str | None, str]] = []
-    for line in text.splitlines():
-        line = line.strip().lstrip("-*•# ").replace("**", "").strip()
-        if not line or line.upper().strip("*. ") == "NONE" or len(line) > 300:
-            continue
-        match = _KEYED.match(line)
-        key, sentence = (match.group(1), match.group(2).strip()) if match else (None, line)
-        if key == "topic" or not _FIRST_PERSON.match(sentence) or _NOT_A_FACT.search(sentence):
-            continue
-        facts.append((key, sentence))
-    return facts
+_PLAIN_LINE = re.compile(r"^(?:([a-z][a-z0-9_]{1,40})\s*\|\s*)?((?:i|i'm|i've|my|we|our|never)\b.*)$", re.IGNORECASE)
 
 
-_RESIDENCE = re.compile(r"\b(live|lives|living|lived|based|moved|moving|move|relocat\w*|reside|residing|home|hometown)\b", re.IGNORECASE)
+def parse_facts(content: list[dict], user_text: str) -> list[tuple[str | None, str]]:
+    """(topic, statement) pairs from a ``record_facts`` call.
 
-
-def is_grounded(key: str | None, sentence: str, user_text: str) -> bool:
-    """A claim about where the user lives needs residence wording in the user's own message.
-
-    The extractor sees the assistant's reply too and sometimes turns places that were merely compared
-    ("Berlin or Porto for a weekend") into a new home city, which would supersede the real one.
+    Each fact must be backed by a quote that really occurs in the user's message, which drops
+    facts the model took from the assistant's reply or inferred. If the model answered in plain
+    text instead (e.g. a simple test double), first-person lines are accepted, optionally as
+    ``topic | sentence``.
     """
-    if key == "home_city" or _RESIDENCE.search(sentence):
-        return bool(_RESIDENCE.search(user_text))
-    return True
-
-
-def parse_facts(text: str) -> list[str]:
-    return [fact for _, fact in parse_keyed(text)]
+    calls = [b for b in content if b.get("type") == "tool_use" and b.get("name") == EXTRACT_TOOL["name"]]
+    if calls:
+        user = _norm(user_text)
+        facts = []
+        for item in calls[0].get("input", {}).get("facts") or []:
+            quote = _norm(str(item.get("quote", "")))
+            statement = str(item.get("statement", "")).strip()
+            if statement and quote and quote in user:
+                facts.append((str(item.get("topic") or "").strip() or None, statement))
+        return facts
+    facts = []
+    for line in "".join(b.get("text", "") for b in content if b.get("type") == "text").splitlines():
+        match = _PLAIN_LINE.match(line.strip().lstrip("-*• ").strip())
+        if match and len(line) <= 300:
+            facts.append((match.group(1), match.group(2).strip()))
+    return facts

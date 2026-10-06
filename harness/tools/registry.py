@@ -74,17 +74,16 @@ def result_block(tool_use_id: str, result: ToolResult) -> dict:
 
 
 class TurnToolRunner:
-    """Per-turn dispatch guard against retry loops.
+    """Per-turn guard against retry loops.
 
-    Within one turn an identical call that already succeeded is answered from its first
-    result, and one that already failed ``max_failures`` times is refused without being
-    executed, so a flaky backend cannot burn the step budget.
+    A call that already failed ``max_failures`` times this turn (same tool, same arguments) is
+    refused without being executed, so a flaky backend cannot burn the step budget. Successful
+    calls always run: tools can have side effects, so a repeat may legitimately return new data.
     """
 
     def __init__(self, registry: ToolRegistry, max_failures: int = 2):
         self.registry = registry
         self.max_failures = max_failures
-        self._done: dict[str, ToolResult] = {}
         self._failures: Counter[str] = Counter()
 
     @staticmethod
@@ -92,28 +91,19 @@ class TurnToolRunner:
         return f"{use['name']}:{json.dumps(use.get('input') or {}, sort_keys=True, default=str)}"
 
     def run(self, uses: list[dict]) -> list[ToolResult]:
-        results: list[ToolResult | None] = [None] * len(uses)
-        pending: dict[str, int] = {}  # key -> index of the call that will execute
-        for i, use in enumerate(uses):
-            key = self._key(use)
-            if key in self._done:
-                results[i] = self._done[key]
-            elif self._failures[key] >= self.max_failures:
-                results[i] = ToolResult(
-                    ok=False,
-                    content="",
+        keys = [self._key(u) for u in uses]
+        allowed = [i for i, k in enumerate(keys) if self._failures[k] < self.max_failures]
+        executed = dict(zip(allowed, self.registry.call_many([uses[i] for i in allowed])))
+        results = []
+        for i, key in enumerate(keys):
+            if i not in executed:
+                results.append(ToolResult(
+                    ok=False, content="",
                     error=f"this exact call has already failed {self._failures[key]} times this turn and was not "
                     "retried; do not call it again. Tell the user it is unavailable, or try different arguments.",
-                )
-            elif key not in pending:
-                pending[key] = i
-        executed = self.registry.call_many([uses[i] for i in pending.values()])
-        for (key, _), result in zip(pending.items(), executed):
-            if result.ok:
-                self._done[key] = result
-            else:
+                ))
+                continue
+            if not executed[i].ok:
                 self._failures[key] += 1
-        for i, use in enumerate(uses):
-            if results[i] is None:
-                results[i] = executed[list(pending).index(self._key(use))]
-        return results  # type: ignore[return-value]
+            results.append(executed[i])
+        return results

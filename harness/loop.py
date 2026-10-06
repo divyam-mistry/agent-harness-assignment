@@ -263,13 +263,14 @@ class Engine:
                 model=self.config.aux_model,
                 system=extract.EXTRACTION_INSTRUCTIONS,
                 messages=extract.build_request(user_text, reply_text),
+                tools=[extract.EXTRACT_TOOL],
+                tool_choice={"type": "tool", "name": extract.EXTRACT_TOOL["name"]},
                 max_tokens=512,
             )
             usage.merge(response.usage)
             now = self.clock().isoformat()
-            for key, text in extract.parse_keyed(response.text):
-                if extract.is_grounded(key, text, user_text):
-                    session.episodic.add(text, session.turn, now, key)
+            for key, text in extract.parse_facts(response.content, user_text):
+                session.episodic.add(text, session.turn, now, key)
             consolidate(session.episodic, self.memory, self.clock())
         except Exception as exc:  # losing one turn's facts must not fail the turn
             logger.event("memory_error", error=f"{type(exc).__name__}: {exc}"[:300])

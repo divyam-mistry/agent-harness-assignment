@@ -104,10 +104,6 @@ def message_text(message: dict) -> str:
     return "".join(parts)
 
 
-def _text_of(message: dict) -> str:
-    return message_text(message)
-
-
 def is_turn_start(message: dict) -> bool:
     """A real user message, as opposed to a user message that only carries tool results."""
     if message.get("role") != "user":
@@ -122,11 +118,6 @@ def estimate_tokens(value: Any, chars_per_token: float = 3.0) -> int:
     """Conservative token estimate for any JSON-able request part (about 3 chars per token)."""
     text = value if isinstance(value, str) else json.dumps(value, default=str)
     return int(len(text) / chars_per_token) + 1
-
-
-def count_tokens(messages: list[dict]) -> int:
-    """Estimated token size of the conversation history."""
-    return estimate_tokens(messages)
 
 
 def transcript_lines(messages: list[dict], per_message_chars: int = 600) -> list[str]:
@@ -222,10 +213,6 @@ class ContextBuilder:
             for block in message["content"]:
                 if block.get("type") == "tool_result" and len(str(block.get("content", ""))) > 300:
                     block["content"] = f"[output of {len(str(block['content']))} chars omitted to save space]"
-
-    def fit(self, history: list[dict], overhead: int = 0) -> int:
-        """Like ``split`` but only reports how many messages were dropped."""
-        return len(self.split(history, overhead))
 
     def system_blocks(self, parts: dict[str, str], layout: tuple[str, ...]) -> list[dict]:
         """System prompt blocks in ``layout`` order; the complete system prompt is marked for caching."""

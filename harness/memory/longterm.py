@@ -13,15 +13,14 @@ The topic key is given by the extractor, or inferred by ``infer_key`` for the fe
 
 Retrieval (``search``) - only active items, only items sharing a content word with the query,
 ranked by IDF-weighted overlap with a small boost for repeated facts. Nothing else is returned for an
-unrelated query: a passing remark must not be volunteered. Only the identity facts in ``CORE_KEYS``
+unrelated query: a passing remark must not be volunteered. Only the identity facts in ``ALWAYS_OFFER``
 (home city, name) are always offered.
 
 Forgetting (``sweep``) - by the injected clock, never wall time:
   * a fact mentioned once, with no topic, and never recalled      -> expires after 30 days;
   * a reinforced (>= 2 mentions) or ever-recalled fact              -> expires after 180 days unused;
   * a keyed fact (home city, diet, ...)                             -> expires after 365 days unused;
-  * superseded and expired items stay visible (inactive) for 90 days as an audit trail, then are purged;
-  * at most 150 active facts per user; the weakest are retired first.
+  * superseded and expired items stay in the file as inactive items (an audit trail, never retrieved).
 """
 
 from __future__ import annotations
@@ -43,16 +42,11 @@ _STOP = frozenset(
 )
 
 # Identity facts that are offered to the model in every session, relevant to the query or not.
-CORE_KEYS = frozenset({"home_city", "name"})
-
-# Topics whose label we trust our own pattern for over the extractor's wording.
-CANONICAL_KEYS = CORE_KEYS | {"diet", "seat_preference"}
+ALWAYS_OFFER = frozenset({"home_city", "name"})
 
 TTL_ONE_OFF_DAYS = 30
 TTL_REINFORCED_DAYS = 180
 TTL_KEYED_DAYS = 365
-PURGE_INACTIVE_DAYS = 90
-MAX_ACTIVE_PER_USER = 150
 
 
 def tokenize(text: str) -> list[str]:
@@ -143,7 +137,7 @@ class LongTermMemory:
     def add(self, user_id: str, text: str, session_id: str, created_at: str, key: str | None = None) -> dict:
         text = text.strip()
         inferred = infer_key(text)
-        key = inferred if inferred in CANONICAL_KEYS else (key or inferred)
+        key = inferred or key  # our own pattern wins, so the same topic always gets the same label
         tokens = content_tokens(text)
         for old in self.for_user(user_id, active_only=True):
             same_topic = key is not None and old.get("key") == key
@@ -172,7 +166,7 @@ class LongTermMemory:
                 f["last_used_at"] = at
 
     def sweep(self, now: datetime, user_id: str | None = None) -> int:
-        """Apply the forgetting policy; returns how many items changed state or were purged."""
+        """Apply the forgetting policy; returns how many items expired."""
         now = now.replace(tzinfo=None)
         changed = 0
         for f in self.facts:
@@ -189,19 +183,6 @@ class LongTermMemory:
             if (now - ref).days > ttl:
                 f.update(active=False, inactive_since=now.isoformat(), reason="expired")
                 changed += 1
-        for uid in {f["user_id"] for f in self.facts if f["active"] and (not user_id or f["user_id"] == user_id)}:
-            active = self.for_user(uid, active_only=True)
-            for f in sorted(active, key=lambda f: (f["mentions"], f.get("updated_at") or ""))[: max(0, len(active) - MAX_ACTIVE_PER_USER)]:
-                f.update(active=False, inactive_since=now.isoformat(), reason="capacity")
-                changed += 1
-        kept = []
-        for f in self.facts:
-            since = _parse(f.get("inactive_since")) if not f["active"] else None
-            if since is not None and (now - since).days > PURGE_INACTIVE_DAYS:
-                changed += 1
-            else:
-                kept.append(f)
-        self.facts = kept
         return changed
 
     # -- read ----------------------------------------------------------------------------------
@@ -211,7 +192,7 @@ class LongTermMemory:
 
     def search(self, user_id: str, query: str, k: int) -> list[dict]:
         facts = self.for_user(user_id, active_only=True)
-        core = [f for f in facts if f.get("key") in CORE_KEYS]
+        core = [f for f in facts if f.get("key") in ALWAYS_OFFER]
         query_tokens = content_tokens(query)
         if not facts or not query_tokens:
             return core

@@ -417,20 +417,33 @@ def test_topic_word_finds_the_fact(tmp_path):
     h.close()
 
 
-def test_assistant_commentary_cannot_overwrite_the_home_city(tmp_path):
-    class Chatty(StrictModel):
+def _recording_model(facts_for):
+    """StrictModel whose extractor answers through the record_facts tool, as the real one is forced to."""
+    from fakes import Message
+
+    class Structured(StrictModel):
         def create(self, **kwargs):
-            if self.kind(kwargs) == "extract":
-                from fakes import Message
-                text = ("home_city | I live in Berlin.\n"
-                        "home_city | I'm checking flights from your location. Actually, I don't know where you're based.\n"
-                        "home_city | I don't see any facts stated by the user in this exchange.")
+            if "record_facts" in str(kwargs.get("tools")):
+                self.requests.append({"kind": "extract", **kwargs})
+                user = str(kwargs["messages"][-1]["content"])
                 return Message.model_validate({"id": "m", "type": "message", "role": "assistant", "model": "x",
-                    "content": [{"type": "text", "text": text}], "stop_reason": "end_turn", "stop_sequence": None,
-                    "usage": {"input_tokens": 5, "output_tokens": 5}})
+                    "content": [{"type": "tool_use", "id": "toolu_x", "name": "record_facts",
+                                 "input": {"facts": facts_for(user)}}],
+                    "stop_reason": "tool_use", "stop_sequence": None, "usage": {"input_tokens": 5, "output_tokens": 5}})
             return super().create(**kwargs)
 
-    h = make(tmp_path, Chatty())
+    return Structured()
+
+
+def test_a_fact_the_user_did_not_say_is_not_stored(tmp_path):
+    """The extractor also sees the assistant's reply; a fact whose quote is not in the user's words is dropped."""
+    def facts(user):
+        return [
+            {"topic": "home_city", "statement": "I live in Berlin.", "quote": "I live in Berlin"},
+            {"topic": "home_city", "statement": "I live in Porto.", "quote": "I live in Porto"},  # invented
+        ]
+
+    h = make(tmp_path, _recording_model(facts))
     s = h.new_session("u")
     h.run_turn(s, "hello, I live in Berlin")
     assert [i["text"] for i in h.memory_snapshot("u") if i["active"]] == ["I live in Berlin."]
@@ -439,21 +452,40 @@ def test_assistant_commentary_cannot_overwrite_the_home_city(tmp_path):
 
 def test_comparing_places_for_a_trip_does_not_change_the_home_city(tmp_path):
     """CX-4518 follow-up, seen in a real run: the extractor turned 'Berlin or Porto?' into 'I live in Porto'."""
-    class Hallucinating(StrictModel):
-        def create(self, **kwargs):
-            if self.kind(kwargs) == "extract" and "comparing" in str(kwargs["messages"][-1]["content"]):
-                from fakes import Message
-                return Message.model_validate({"id": "m", "type": "message", "role": "assistant", "model": "x",
-                    "content": [{"type": "text", "text": "home_city | I live in Porto."}],
-                    "stop_reason": "end_turn", "stop_sequence": None,
-                    "usage": {"input_tokens": 5, "output_tokens": 5}})
-            return super().create(**kwargs)
+    def facts(user):
+        if "comparing" in user:
+            return [{"topic": "home_city", "statement": "I live in Porto.", "quote": "I live in Porto"}]
+        return [{"topic": "home_city", "statement": "I live in Berlin.", "quote": "I live in Berlin"}]
 
-    h = make(tmp_path, Hallucinating())
+    h = make(tmp_path, _recording_model(facts))
     s = h.new_session("u")
     h.run_turn(s, "I live in Berlin.")
     for _ in range(3):
         h.run_turn(s, "I am comparing Berlin and Porto for a long weekend, with prices if you can.")
-    active = [i["text"] for i in h.memory_snapshot("u") if i["active"]]
-    assert active == ["I live in Berlin."]
+    assert [i["text"] for i in h.memory_snapshot("u") if i["active"]] == ["I live in Berlin."]
+    h.close()
+
+
+def test_a_tool_call_made_after_a_write_sees_the_new_state(tmp_path):
+    """The same read repeated within a turn must hit the tool again: an earlier write may have changed the answer."""
+    state = {"status": "open"}
+
+    def look(args):
+        return ToolResult(ok=True, content=state["status"])
+
+    def cancel(args):
+        state["status"] = "cancelled"
+        return ToolResult(ok=True, content="done")
+
+    plan = [[("look", {"id": 1})], [("cancel", {"id": 1})], [("look", {"id": 1})]]
+
+    def main(request, step):
+        n = sum(1 for m in request["messages"] if m["role"] == "assistant")
+        return plan[n] if n < len(plan) else "finished"
+
+    model = StrictModel(main=main)
+    h = make(tmp_path, model, [tool("look", look), tool("cancel", cancel)])
+    s = h.new_session("u")
+    h.run_turn(s, "cancel it and check")
+    assert [b["content"] for b in tool_results([r for r in model.requests if r["kind"] == "main"][-1])] == ["open", "done", "cancelled"]
     h.close()
