@@ -12,7 +12,9 @@ and corrections to something they said earlier.
 
 Do not list: one-off requests or questions, order numbers or other identifiers the user
 is merely asking about, small talk, things only the assistant said, or anything the
-user did not state. Asking about a place (weather, hotels) does not mean the user lives there.
+user did not state. Asking about a place, or comparing places as options for a trip (weather,
+hotels, "Berlin or Porto"), does not mean the user lives there: use `home_city` only when the USER
+explicitly says where they live or that they moved.
 Output only the fact lines, no commentary. If the user corrects or changes an earlier fact,
 list only the new fact.
 
@@ -51,6 +53,20 @@ def parse_keyed(text: str) -> list[tuple[str | None, str]]:
             continue
         facts.append((key, sentence))
     return facts
+
+
+_RESIDENCE = re.compile(r"\b(live|lives|living|lived|based|moved|moving|move|relocat\w*|reside|residing|home|hometown)\b", re.IGNORECASE)
+
+
+def is_grounded(key: str | None, sentence: str, user_text: str) -> bool:
+    """A claim about where the user lives needs residence wording in the user's own message.
+
+    The extractor sees the assistant's reply too and sometimes turns places that were merely compared
+    ("Berlin or Porto for a weekend") into a new home city, which would supersede the real one.
+    """
+    if key == "home_city" or _RESIDENCE.search(sentence):
+        return bool(_RESIDENCE.search(user_text))
+    return True
 
 
 def parse_facts(text: str) -> list[str]:

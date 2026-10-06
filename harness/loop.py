@@ -268,7 +268,8 @@ class Engine:
             usage.merge(response.usage)
             now = self.clock().isoformat()
             for key, text in extract.parse_keyed(response.text):
-                session.episodic.add(text, session.turn, now, key)
+                if extract.is_grounded(key, text, user_text):
+                    session.episodic.add(text, session.turn, now, key)
             consolidate(session.episodic, self.memory, self.clock())
         except Exception as exc:  # losing one turn's facts must not fail the turn
             logger.event("memory_error", error=f"{type(exc).__name__}: {exc}"[:300])

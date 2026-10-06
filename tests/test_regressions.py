@@ -400,7 +400,7 @@ def test_extractor_chatter_is_not_stored_as_facts(tmp_path):
 
     h = make(tmp_path, Chatty())
     s = h.new_session("u")
-    h.run_turn(s, "hello")
+    h.run_turn(s, "hello, I live in Oslo")
     assert [i["text"] for i in h.memory_snapshot("u")] == ["I live in Oslo."]
     h.close()
 
@@ -432,6 +432,28 @@ def test_assistant_commentary_cannot_overwrite_the_home_city(tmp_path):
 
     h = make(tmp_path, Chatty())
     s = h.new_session("u")
-    h.run_turn(s, "hello")
+    h.run_turn(s, "hello, I live in Berlin")
     assert [i["text"] for i in h.memory_snapshot("u") if i["active"]] == ["I live in Berlin."]
+    h.close()
+
+
+def test_comparing_places_for_a_trip_does_not_change_the_home_city(tmp_path):
+    """CX-4518 follow-up, seen in a real run: the extractor turned 'Berlin or Porto?' into 'I live in Porto'."""
+    class Hallucinating(StrictModel):
+        def create(self, **kwargs):
+            if self.kind(kwargs) == "extract" and "comparing" in str(kwargs["messages"][-1]["content"]):
+                from fakes import Message
+                return Message.model_validate({"id": "m", "type": "message", "role": "assistant", "model": "x",
+                    "content": [{"type": "text", "text": "home_city | I live in Porto."}],
+                    "stop_reason": "end_turn", "stop_sequence": None,
+                    "usage": {"input_tokens": 5, "output_tokens": 5}})
+            return super().create(**kwargs)
+
+    h = make(tmp_path, Hallucinating())
+    s = h.new_session("u")
+    h.run_turn(s, "I live in Berlin.")
+    for _ in range(3):
+        h.run_turn(s, "I am comparing Berlin and Porto for a long weekend, with prices if you can.")
+    active = [i["text"] for i in h.memory_snapshot("u") if i["active"]]
+    assert active == ["I live in Berlin."]
     h.close()
