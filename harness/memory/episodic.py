@@ -11,5 +11,5 @@ class EpisodicMemory:
     user_id: str
     facts: list[dict] = field(default_factory=list)
 
-    def add(self, text: str, turn: int, at: str) -> None:
-        self.facts.append({"text": text, "turn": turn, "at": at})
+    def add(self, text: str, turn: int, at: str, key: str | None = None) -> None:
+        self.facts.append({"text": text, "turn": turn, "at": at, "key": key, "flushed": False})
