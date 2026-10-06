@@ -23,9 +23,13 @@ def price_for(model: str) -> tuple[float, float]:
 
 @dataclass
 class Settings:
-    max_steps: int = 30
-    system_layout: tuple[str, ...] = ("session", "instructions")
-    retrieval_k: int = 8
+    max_steps: int = 15
+    # Static text first: anything that changes between requests must come after the cached prefix.
+    system_layout: tuple[str, ...] = ("instructions", "session")
+    retrieval_k: int = 5
+    tool_timeout_s: float = 20.0
+    api_max_attempts: int = 6
+    api_base_delay_s: float = 0.5
     extraction_enabled: bool = True
     subagent_max_steps: int = 8
     subagent_tools: tuple[str, ...] = ("search_docs", "fetch_url", "lookup_order", "calendar_free_slots", "calculate")
