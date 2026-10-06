@@ -45,6 +45,9 @@ _STOP = frozenset(
 # Identity facts that are offered to the model in every session, relevant to the query or not.
 CORE_KEYS = frozenset({"home_city", "name"})
 
+# Topics whose label we trust our own pattern for over the extractor's wording.
+CANONICAL_KEYS = CORE_KEYS | {"diet", "seat_preference"}
+
 TTL_ONE_OFF_DAYS = 30
 TTL_REINFORCED_DAYS = 180
 TTL_KEYED_DAYS = 365
@@ -140,7 +143,7 @@ class LongTermMemory:
     def add(self, user_id: str, text: str, session_id: str, created_at: str, key: str | None = None) -> dict:
         text = text.strip()
         inferred = infer_key(text)
-        key = inferred if inferred in CORE_KEYS else (key or inferred)
+        key = inferred if inferred in CANONICAL_KEYS else (key or inferred)
         tokens = content_tokens(text)
         for old in self.for_user(user_id, active_only=True):
             same_topic = key is not None and old.get("key") == key
