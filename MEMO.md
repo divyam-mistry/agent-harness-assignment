@@ -36,7 +36,6 @@ Against the handed-over code, 22 of the 24 current regression-test cases fail (c
 - **Retrieval is lexical**: "where am I based?" will not find "I live in Berlin" except via the always-on identity facts. Embeddings would fix it; I judged the dependency and cost not worth it.
 - **Retractions without a topic** ("you may ship to my office again") are not linked to the earlier constraint; summary and recency catch most cases, not deterministically.
 - **Sub-agent output is still trusted** by the main model; the prompt says to check it, nothing enforces it.
-- Hung tool threads cannot be killed in Python; they are abandoned after the timeout.
 
 ## Trade-offs
 
@@ -64,4 +63,4 @@ Prompt tokens ÷ budget (alert >90%); cache-read share per session (a drop means
 Tool cache shared across users (leak risk); corrupt `memory.json` silently reset; facts lost on kill; no 429/529 handling; unbounded sub-agent context; `research` description over-promoted the most expensive tool; extraction stored order ids the user was merely asking about.
 **Looked like a bug, is not:** recalled facts are appended to the *user* message, not the system prompt. Deliberate: it keeps the cached prefix stable, and they are labelled as the user's possibly outdated statements. The duplicated phrase in logged user messages ("just so you know, just so you know") is simulator noise.
 
-*Latest simplification pass (after the runs above): removed the success replay in the per-turn tool guard (it returned stale reads after a write; `test_a_tool_call_made_after_a_write_…`), the capacity cap and purge, the second key set, dead helpers, and moved extraction to structured output. Checked with one real-API smoke run (4 correct facts, trip-comparison turn did not change the home city); the full 65-turn run was not repeated.*
+*Last pass (not in the runs above): removed the stale-read replay in the tool guard, the memory cap/purge, a duplicate key set and dead helpers; extraction is now structured. One real-API smoke run passed; the 65-turn run was not repeated.*
