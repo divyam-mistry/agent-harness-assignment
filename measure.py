@@ -51,7 +51,7 @@ def scripts(orders: list[str]) -> list[list[tuple[str, str | None]]]:
             s1.append((f"Check order {orders[4 + i % 5]} for me.", None))
         if i % 5 == 2:
             s1.append((f"Any free 30-minute slot on 2026-10-{14 + i % 5}?", None))
-    s1.append(("Remind me: what is my first order id, and where must I not ship things?", orders[0]))
+    s1.append(("Remind me: which order id did I give you at the very start, and where must I not ship things?", orders[0]))
     s2 = [
         ("Hello again. Big news: I moved from Paris to Berlin last month.", None),
         ("What's the best way to get from the airport to the centre where I live?", "Berlin"),

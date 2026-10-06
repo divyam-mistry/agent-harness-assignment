@@ -21,7 +21,7 @@ Five layers failed quietly; none raised an error anyone would notice.
 | CX-4518 / 4561 | Memory policy below | `test_cx4518_*`, `test_cx4561_*` (2), `test_one_off_remarks_…`, `test_facts_survive_…killed…`, `test_a_corrupt_memory_file…`, `test_extractor_chatter…`, `test_assistant_commentary…`, `test_topic_word_…` |
 | Conditions | 429/529/5xx retry with backoff; sessions persisted per turn and resumable; stable cache prefix | `test_rate_limits_…`, `test_a_session_can_continue_in_a_new_process`, `test_the_cacheable_prefix_…` |
 
-Against the handed-over code, 20 of the first 21 regression tests failed; the one that passed, `test_cx4502_history_stays_valid_…`, did not reproduce the bug (`test_cx4502_a_single_turn_…` does). Three tests were added after that check.
+Against the handed-over code, 22 of the 24 current regression-test cases fail (checked in a worktree of the original commit). One of the two that pass, `test_cx4502_history_stays_valid_…`, does not reproduce the bug (`test_cx4502_a_single_turn_…` does).
 
 ## Memory policy (written before implementing; `harness/memory/longterm.py`)
 
@@ -51,12 +51,13 @@ Prompt tokens ÷ budget (alert >90%); cache-read share per session (a drop means
 
 ## Real measurements (`measure.py`, real API, budget 8,000)
 
-65 turns, 3 sessions (session 2 killed without `end_session`, each session in a fresh `Harness`), flaky calendar on. Code as of commit "Extraction: reject non-fact chatter"; two later fixes (second-person filter, canonical `diet` label) came from this run's output and were **not re-measured**.
+65 turns, 3 sessions (session 2 killed without `end_session`, each session in a fresh `Harness`), flaky calendar on. Run three times, fixing what each run showed; final run on the final code:
 
-- **Cost $0.535, $0.0082/turn** vs $0.031/turn in the production logs (~3.8×; workloads differ, indicative only).
-- **Cache hit 72.8% overall, 87.1% on main** (was 10.7%). 80.0k uncached, 321.9k cache-read, 40.5k cache-write, 28.6k output tokens.
-- Max prompt 5,613 tokens vs 8,000 budget; 11 truncations; 0 API errors; 1 tool failure in 50 calls; no 400s. 177 calls: 91 main, 65 extract, 10 sub-agent, 11 summary.
-- **Surprises:** haiku often answered with commentary instead of `NONE` ("The user made no durable statements…"); the first parser stored it as facts and once overwrote the home city. The parser now accepts only first-person, non-second-person lines. Session-3 recall probes ("where do I live?", "which diet?") still failed in this run; I fixed the causes afterwards but did not re-run, so cross-session recall is the least verified part.
+- **Cost $0.631, $0.0097/turn** vs $0.031/turn in the production logs (~3×; workloads differ, indicative only). Earlier runs: $0.535, $0.696, so expect ±15% run to run.
+- **Cache hit 67.7% overall, 84.3% on main** (was 10.7%). 100k uncached, 317k cache-read, 51k cache-write, 32k output tokens.
+- Max prompt 5,753 vs 8,000 budget (7,620 in the previous run); 13 truncations; 0 API errors; 1 tool failure in 66 calls; no 400s. 186 calls: 94 main, 65 extract, 14 sub-agent, 13 summary.
+- **Cross-session recall: 5 of 6 probes pass** (home city, diet, seat, shipping rule). The sixth ("what is my first order id") was ambiguous: the model gave the earliest order in the order history, not the id the user stated. I reworded the probe but did not re-run it.
+- **Surprises, each fixed:** (1) haiku often answered with commentary instead of `NONE`; the first parser stored it as facts and once overwrote the home city. It now accepts only first-person, non-second-person lines. (2) A user *comparing* Berlin and Porto for a trip made it emit `home_city | I live in Porto.`, which superseded the real Berlin ("you live in Porto"). A home-city claim is now stored only if the user's own message has residence wording (`is_grounded`); test `test_comparing_places_for_a_trip_does_not_change_the_home_city`. The final run kept Berlin. (3) Extraction runs every turn (65 of 186 calls) but is about 10% of cost.
 
 ## Found outside the bug reports
 
