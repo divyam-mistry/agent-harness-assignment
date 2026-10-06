@@ -415,3 +415,23 @@ def test_topic_word_finds_the_fact(tmp_path):
     reply = h.run_turn(s, "Which diet do I follow?")
     assert "I am vegan." in last_user_text({"messages": reply.raw_messages})
     h.close()
+
+
+def test_assistant_commentary_cannot_overwrite_the_home_city(tmp_path):
+    class Chatty(StrictModel):
+        def create(self, **kwargs):
+            if self.kind(kwargs) == "extract":
+                from fakes import Message
+                text = ("home_city | I live in Berlin.\n"
+                        "home_city | I'm checking flights from your location. Actually, I don't know where you're based.\n"
+                        "home_city | I don't see any facts stated by the user in this exchange.")
+                return Message.model_validate({"id": "m", "type": "message", "role": "assistant", "model": "x",
+                    "content": [{"type": "text", "text": text}], "stop_reason": "end_turn", "stop_sequence": None,
+                    "usage": {"input_tokens": 5, "output_tokens": 5}})
+            return super().create(**kwargs)
+
+    h = make(tmp_path, Chatty())
+    s = h.new_session("u")
+    h.run_turn(s, "hello")
+    assert [i["text"] for i in h.memory_snapshot("u") if i["active"]] == ["I live in Berlin."]
+    h.close()

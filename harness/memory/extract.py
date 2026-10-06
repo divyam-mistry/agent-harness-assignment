@@ -34,6 +34,8 @@ def build_request(user_text: str, assistant_text: str) -> list[dict]:
 _KEYED = re.compile(r"^([a-z][a-z0-9_]{1,40})\s*\|\s*(.+)$")
 # Facts are first-person statements; anything else is the model talking about the task, not a fact.
 _FIRST_PERSON = re.compile(r"^(i|i'm|i’m|i've|i’ve|i'd|my|we|we're|our|never|please)\b", re.IGNORECASE)
+# Second person, or talk about the task itself: the model is commenting, not recording a fact.
+_NOT_A_FACT = re.compile(r"\byou(r|rs)?\b|\b(facts?|exchange|user|stated|statements?)\b|\bI(?:'ll| will| don't see| realize)\b|\.\.\.", re.IGNORECASE)
 
 
 def parse_keyed(text: str) -> list[tuple[str | None, str]]:
@@ -45,7 +47,7 @@ def parse_keyed(text: str) -> list[tuple[str | None, str]]:
             continue
         match = _KEYED.match(line)
         key, sentence = (match.group(1), match.group(2).strip()) if match else (None, line)
-        if key == "topic" or not _FIRST_PERSON.match(sentence):
+        if key == "topic" or not _FIRST_PERSON.match(sentence) or _NOT_A_FACT.search(sentence):
             continue
         facts.append((key, sentence))
     return facts
