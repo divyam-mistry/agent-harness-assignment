@@ -128,16 +128,7 @@ class Engine:
         memories = self._recall(session, user_message)
         entry = {"role": "user", "content": with_recalled_facts(user_message, memories)}
         session.history.append(entry)
-        try:
-            reply_text, sent, tool_calls = self._converse(session, logger, turn_usage, sub_usage)
-        except BaseException:
-            # Leave the session valid: remove this turn's partial exchange, keep everything before it.
-            for i, m in enumerate(session.history):
-                if m is entry:
-                    del session.history[i:]
-                    break
-            session.turn -= 1
-            raise
+        reply_text, sent, tool_calls = self._converse(session, logger, turn_usage, sub_usage)
 
         self._remember(session, logger, user_message, reply_text, turn_usage)
         session.save(self.sessions_dir)

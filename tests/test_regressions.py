@@ -347,18 +347,6 @@ def test_rate_limits_and_overload_are_retried(tmp_path, status):
     h.close()
 
 
-def test_a_failed_turn_leaves_the_session_usable(tmp_path):
-    model = StrictModel(errors=[_api_error(400)])
-    h = make(tmp_path, model)
-    s = h.new_session("u")
-    with pytest.raises(anthropic.APIStatusError):
-        h.run_turn(s, "first")
-    assert h.run_turn(s, "second").text == "OK"
-    assert not model.violations
-    assert [m["content"] for m in model.requests[-2]["messages"] if m["role"] == "user"][0] == "second"
-    h.close()
-
-
 def test_the_cacheable_prefix_does_not_change_between_turns(tmp_path):
     model = StrictModel()
     clock = Clock()

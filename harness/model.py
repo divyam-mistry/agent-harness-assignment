@@ -41,13 +41,13 @@ class ModelResponse:
         return [b for b in self.content if b.get("type") == "tool_use"]
 
 
-RETRYABLE_STATUS = {408, 409, 429, 500, 502, 503, 504, 529}
+RETRYABLE_STATUS = {429, 529}
 
 
 class ModelClient:
     def __init__(self, client: Any, meter: CostMeter, max_usd_budget: float | None,
                  max_attempts: int = 6, base_delay: float = 0.5, max_delay: float = 8.0):
-        self.client = client if client is not None else anthropic.Anthropic(timeout=90.0)
+        self.client = client if client is not None else anthropic.Anthropic()
         self.meter = meter
         self.max_usd_budget = max_usd_budget
         self.max_attempts = max_attempts

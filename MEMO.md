@@ -15,7 +15,7 @@ Five layers failed quietly; none raised an error anyone would notice.
 | Report | Fix | Tests |
 |---|---|---|
 | CX-4471 | Token estimate over system+tools+messages; whole turns dropped to a 60% low-water mark and folded into a rolling summary (haiku, chunked to fit the budget) | `test_cx4471_*`, `test_every_request_…fits_the_budget` |
-| CX-4502 | Cut only at turn boundaries; if one turn is too big, stub old tool outputs but keep pairs; failed turns roll back | `test_cx4502_*` (2), `test_a_failed_turn_leaves_the_session_usable` |
+| CX-4502 | Cut only at turn boundaries; if one turn is too big, stub old tool outputs but keep pairs | `test_cx4502_*` (2) |
 | CX-4540 | Failures are `ok=False`, never cached; timeout; refuse an identical call after 2 failures; forced final answer (`tool_choice: none`) on step exhaustion | `test_cx4540_*` (3), `test_empty_model_reply_…` |
 | CX-4533 | Sub-agent gets a digest of the user's statements and binding-constraint instructions, is budget-checked, fails honestly; `research` description no longer says "prefer it" | `test_cx4533_*` (2) |
 | CX-4518 / 4561 | Memory policy below | `test_cx4518_*`, `test_cx4561_*` (2), `test_one_off_remarks_…`, `test_facts_survive_…killed…`, `test_a_corrupt_memory_file…`, `test_extractor_chatter…`, `test_a_fact_the_user_did_not_say…`, `test_topic_word_…` |
