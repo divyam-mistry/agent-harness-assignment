@@ -212,7 +212,8 @@ class LongTermMemory:
         query_tokens = content_tokens(query)
         if not facts or not query_tokens:
             return core
-        doc_tokens = [content_tokens(f["text"]) for f in facts]
+        # the topic label is searchable too, so "which diet do I follow?" finds "I'm vegan." (topic diet)
+        doc_tokens = [content_tokens(f["text"]) | content_tokens((f.get("key") or "").replace("_", " ")) for f in facts]
         n = len(facts)
         df = {t: sum(t in d for d in doc_tokens) for t in query_tokens}
         scored = []

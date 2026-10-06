@@ -384,3 +384,34 @@ def test_every_request_the_harness_makes_fits_the_budget(tmp_path):
     assert {kind for kind, _ in model.usages} >= {"main", "extract", "summary"}
     assert max(t for _, t in model.usages) <= 3_000
     h.close()
+
+
+def test_extractor_chatter_is_not_stored_as_facts(tmp_path):
+    class Chatty(StrictModel):
+        def create(self, **kwargs):
+            if self.kind(kwargs) == "extract":
+                self.requests.append({"kind": "extract", **kwargs})
+                from fakes import Message
+                text = "**Explanation:** The user made no durable statements.\n- NONE**\ntopic | sentence\nhome_city | I live in Oslo."
+                return Message.model_validate({"id": "m", "type": "message", "role": "assistant", "model": "x",
+                    "content": [{"type": "text", "text": text}], "stop_reason": "end_turn", "stop_sequence": None,
+                    "usage": {"input_tokens": 5, "output_tokens": 5}})
+            return super().create(**kwargs)
+
+    h = make(tmp_path, Chatty())
+    s = h.new_session("u")
+    h.run_turn(s, "hello")
+    assert [i["text"] for i in h.memory_snapshot("u")] == ["I live in Oslo."]
+    h.close()
+
+
+def test_topic_word_finds_the_fact(tmp_path):
+    model = StrictModel()
+    h = make(tmp_path, model)
+    s = h.new_session("u")
+    h.run_turn(s, "I am vegan.")
+    h.end_session(s)
+    s = h.new_session("u")
+    reply = h.run_turn(s, "Which diet do I follow?")
+    assert "I am vegan." in last_user_text({"messages": reply.raw_messages})
+    h.close()
