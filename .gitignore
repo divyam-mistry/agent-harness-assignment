@@ -5,3 +5,6 @@ __pycache__/
 .coverage
 htmlcov/
 logs/
+.env
+.venv/
+.state/

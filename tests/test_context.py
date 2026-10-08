@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from harness.context import STATIC_INSTRUCTIONS, ContextBuilder, count_tokens, with_recalled_facts
+from harness.context import STATIC_INSTRUCTIONS, ContextBuilder, estimate_tokens, with_recalled_facts
 
 
 def _history(n: int, size: int = 50) -> list[dict]:
@@ -13,21 +13,21 @@ def _history(n: int, size: int = 50) -> list[dict]:
     return history
 
 
-def test_count_tokens_grows_with_history():
-    assert count_tokens(_history(4)) > count_tokens(_history(2)) > 0
+def test_estimate_tokens_grows_with_history():
+    assert estimate_tokens(_history(4)) > estimate_tokens(_history(2)) > 0
 
 
 def test_fit_drops_messages_when_over_budget():
     history = _history(20)
     before = len(history)
-    dropped = ContextBuilder(max_context_tokens=500).fit(history)
+    dropped = len(ContextBuilder(max_context_tokens=500).split(history, overhead=0))
     assert dropped > 0
     assert len(history) < before
 
 
 def test_fit_keeps_short_history_intact():
     history = _history(2)
-    assert ContextBuilder(max_context_tokens=100_000).fit(history) == 0
+    assert ContextBuilder(max_context_tokens=100_000).split(history, overhead=0) == []
     assert len(history) == 4
 
 

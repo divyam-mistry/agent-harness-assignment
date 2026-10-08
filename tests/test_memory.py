@@ -37,9 +37,21 @@ def test_consolidate_moves_episodic_facts(tmp_path):
     assert memory.for_user("alice")[0]["text"] == "I am vegetarian."
 
 
-def test_parse_facts_ignores_none_and_bullets():
-    assert parse_facts("NONE") == []
-    assert parse_facts("- I live in Porto.\n* I have a cat.\n") == ["I live in Porto.", "I have a cat."]
+def _text(s):
+    return [{"type": "text", "text": s}]
+
+
+def test_parse_facts_plain_text_ignores_none_and_bullets():
+    assert parse_facts(_text("NONE"), "") == []
+    assert parse_facts(_text("- I live in Porto.\n* I have a cat.\n"), "") == [
+        (None, "I live in Porto."), (None, "I have a cat.")]
+
+
+def test_parse_facts_structured_requires_the_quote_in_the_user_text():
+    call = [{"type": "tool_use", "name": "record_facts", "input": {"facts": [
+        {"topic": "home_city", "statement": "I live in Porto.", "quote": "i live in porto"},
+        {"topic": "pet", "statement": "I have a cat.", "quote": "I have a cat"}]}}]
+    assert parse_facts(call, "Hi! I live in Porto, ok?") == [("home_city", "I live in Porto.")]
 
 
 def test_session_facts_reach_long_term_memory(harness, fake_model):

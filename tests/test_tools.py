@@ -24,7 +24,7 @@ def test_tool_dispatch_resilient():
         raise RuntimeError("backend exploded")
 
     result = ToolRegistry([_spec("broken", broken)]).call("broken", {})
-    assert result.ok is True
+    assert result.ok is False and "backend exploded" in result.error
 
 
 def test_unknown_tool_is_reported():
